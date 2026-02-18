@@ -8,7 +8,8 @@ import {
   Info,
   AlertCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  Trash2
 } from 'lucide-react';
 import { GoogleGenAI, Type } from '@google/genai';
 
@@ -72,25 +73,28 @@ const App: React.FC = () => {
   const [emotionResult, setEmotionResult] = useState<EmotionEntry | null>(null);
   const [metaphorResult, setMetaphorResult] = useState<MetaphorResult | null>(null);
 
+  const rawKey = (process.env.API_KEY || "").trim();
+
   const getMaskedKey = () => {
-    const k = (process.env.API_KEY || "").trim();
-    if (!k) return "КЛЮЧ ПУСТОЙ";
-    return `${k.substring(0, 4)}...${k.substring(k.length - 4)}`;
+    if (!rawKey) return "КЛЮЧ ПУСТОЙ";
+    if (rawKey.length < 8) return rawKey;
+    return `${rawKey.substring(0, 4)}...${rawKey.substring(rawKey.length - 4)}`;
   };
 
   const handleRun = async (e: React.FormEvent) => {
     e.preventDefault();
-    const apiKey = (process.env.API_KEY || "").trim();
-
-    if (!apiKey || apiKey === "undefined") {
+    
+    if (!rawKey || rawKey === "undefined" || rawKey === "PLACEHOLDER_KEY") {
       setAppState(AppState.ERROR);
-      setError('Критическая ошибка: Переменная API_KEY не настроена в Vercel.');
+      setError(rawKey === "PLACEHOLDER_KEY" 
+        ? "Обнаружена заглушка! Ваше приложение использует текст 'PLACEHOLDER_KEY' вместо реального ключа. Скорее всего, в вашем GitHub репозитории лежит файл .env с этим значением. Удалите его!"
+        : "Критическая ошибка: Ключ API_KEY не найден.");
       return;
     }
 
-    if (!apiKey.startsWith("AIza")) {
+    if (!rawKey.startsWith("AIza")) {
       setAppState(AppState.ERROR);
-      setError('Ошибка формата: Ваш ключ не похож на ключ Google Gemini (должен начинаться с AIza). Проверьте, что вы скопировали именно API Key.');
+      setError(`Неверный формат ключа (начинается на ${rawKey.substring(0,4)}...). Ключ Gemini должен начинаться с 'AIza'. Проверьте настройки Vercel.`);
       return;
     }
 
@@ -100,7 +104,7 @@ const App: React.FC = () => {
     if (activeTab === AppTab.METAPHOR) currentInput = metaphorInput;
 
     if (!currentInput.trim()) {
-      setError('Пожалуйста, введите текст.');
+      setError('Введите текст для анализа.');
       return;
     }
 
@@ -108,7 +112,7 @@ const App: React.FC = () => {
     setError(null);
 
     try {
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = new GoogleGenAI({ apiKey: rawKey });
       
       if (activeTab === AppTab.ANALYSIS) {
         const response = await ai.models.generateContent({
@@ -169,10 +173,7 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       setAppState(AppState.ERROR);
-      const msg = err.message || "";
-      if (msg.includes('400')) setError('Ошибка 400: Неверный ключ. Google не узнает этот API-KEY.');
-      else if (msg.includes('403')) setError('Ошибка 403: Доступ запрещен. Проверьте регион или лимиты.');
-      else setError(`Ошибка: ${msg}`);
+      setError(`Ошибка API: ${err.message || 'Сбой связи'}`);
     }
   };
 
@@ -190,7 +191,7 @@ const App: React.FC = () => {
         </div>
         <nav className="flex bg-slate-900/60 p-1.5 rounded-2xl border border-slate-800 backdrop-blur-md">
           {Object.values(AppTab).map(tab => (
-            <button key={tab} onClick={() => { setActiveTab(tab); reset(); }} className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all uppercase tracking-wider ${activeTab === tab ? 'bg-teal-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>{tab}</button>
+            <button key={tab} onClick={() => { setActiveTab(tab); reset(); }} className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all uppercase tracking-wider ${activeTab === tab ? 'bg-teal-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>{tab}</button>
           ))}
         </nav>
       </header>
@@ -229,7 +230,7 @@ const App: React.FC = () => {
           <div className="animate-in fade-in zoom-in-95 duration-700 space-y-8 text-left">
             <div className="flex justify-between items-center border-b border-slate-800 pb-6">
                <h3 className="text-xl font-black text-white uppercase tracking-wider">Анализ завершен</h3>
-               <button onClick={reset} className="flex items-center gap-2 text-xs font-bold text-teal-500 hover:text-white transition-colors uppercase"><RefreshCw className="w-4 h-4" /> Назад</button>
+               <button onClick={reset} className="flex items-center gap-2 text-xs font-bold text-teal-500 hover:text-white transition-colors uppercase tracking-widest"><RefreshCw className="w-4 h-4" /> Новый запрос</button>
             </div>
             {insight && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -240,54 +241,68 @@ const App: React.FC = () => {
                   </div>
                   <div className="bg-teal-600 text-white p-12 rounded-[3rem] shadow-2xl">
                     <h4 className="text-[10px] font-black uppercase tracking-[0.4em] mb-4">Саногенный Щит</h4>
-                    <p className="text-xl font-medium">{insight.shieldTechnique}</p>
+                    <p className="text-xl font-medium leading-relaxed">{insight.shieldTechnique}</p>
                   </div>
                 </div>
                 <div className="space-y-6">
-                   <div className="bg-slate-950 border border-slate-800 p-8 rounded-[2rem]"><h4 className="text-[10px] font-black text-slate-500 uppercase mb-2">Установка</h4><p className="text-xl font-black text-teal-400">«{insight.reframedThought}»</p></div>
+                   <div className="bg-slate-950 border border-slate-800 p-8 rounded-[2rem] shadow-xl"><h4 className="text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest">Установка</h4><p className="text-xl font-black text-teal-400">«{insight.reframedThought}»</p></div>
+                   <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2rem] shadow-xl"><h4 className="text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest">Циклы</h4>
+                    <div className="flex flex-wrap gap-2">{insight.distortions.map(d => <span key={d} className="px-3 py-1 bg-red-500/10 text-red-500 border border-red-500/20 rounded-full text-[10px] font-black uppercase">{d}</span>)}</div>
+                   </div>
                 </div>
               </div>
             )}
             {emotionResult && (
               <div className="bg-slate-900 border border-slate-800 p-12 rounded-[3rem] shadow-2xl max-w-3xl mx-auto text-center">
-                <h4 className="text-5xl font-black text-white uppercase mb-6">{emotionResult.emotion}</h4>
+                <h4 className="text-5xl font-black text-white uppercase mb-6 tracking-tighter">{emotionResult.emotion}</h4>
                 <div className="p-10 bg-slate-950 rounded-[2.5rem] border border-teal-500/20 text-left">
                    <h5 className="text-[10px] font-black text-teal-500 uppercase mb-4 tracking-widest">Путь к осознанию:</h5>
-                   <p className="text-slate-300 leading-relaxed text-lg">{emotionResult.advice}</p>
+                   <p className="text-slate-300 leading-relaxed text-lg italic font-serif">"{emotionResult.advice}"</p>
                 </div>
               </div>
             )}
             {metaphorResult && (
               <div className="bg-slate-900 border border-slate-800 p-12 rounded-[3rem] shadow-2xl max-w-2xl mx-auto">
-                <h4 className="text-3xl font-black text-white mb-8 uppercase text-center">{metaphorResult.title}</h4>
-                <p className="text-lg text-slate-300 font-serif leading-relaxed italic mb-8 whitespace-pre-line">{metaphorResult.story}</p>
-                <div className="pt-8 border-t border-slate-800 text-center"><p className="font-bold text-teal-400 text-2xl italic">«{metaphorResult.moral}»</p></div>
+                <h4 className="text-3xl font-black text-white mb-8 uppercase text-center tracking-tight">{metaphorResult.title}</h4>
+                <p className="text-lg text-slate-300 font-serif leading-relaxed italic mb-8 whitespace-pre-line text-center">{metaphorResult.story}</p>
+                <div className="pt-8 border-t border-slate-800 text-center"><p className="font-bold text-teal-400 text-2xl italic tracking-tight">«{metaphorResult.moral}»</p></div>
               </div>
             )}
           </div>
         )}
 
         {appState === AppState.ERROR && (
-          <div className="text-center py-12 bg-slate-900/50 border border-red-500/20 rounded-[3rem] p-10 max-w-2xl mx-auto space-y-8">
-             <AlertCircle className="w-16 h-16 text-red-500 mx-auto" />
-             <div className="text-white font-bold text-xl px-4">{error}</div>
+          <div className="text-center py-12 bg-slate-900/50 border border-red-500/20 rounded-[3rem] p-10 max-w-2xl mx-auto space-y-8 animate-in zoom-in-95">
+             <AlertCircle className="w-16 h-16 text-red-500 mx-auto opacity-50" />
+             <div className="text-white font-bold text-lg px-4 leading-relaxed">{error}</div>
              
              <div className="space-y-4">
-                <button onClick={() => setShowDiag(!showDiag)} className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-teal-400 mx-auto uppercase tracking-widest transition-colors">
+                <button onClick={() => setShowDiag(!showDiag)} className="flex items-center gap-2 text-[10px] font-black text-slate-500 hover:text-teal-400 mx-auto uppercase tracking-[0.3em] transition-colors">
                   {showDiag ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />} 
-                  {showDiag ? 'Скрыть диагностику' : 'Показать диагностику ключа'}
+                  {showDiag ? 'Скрыть диагностику' : 'Показать диагностику'}
                 </button>
                 
                 {showDiag && (
-                  <div className="bg-black/40 p-6 rounded-2xl border border-white/5 text-left font-mono text-sm space-y-2">
-                    <p className="text-slate-500">Текущий ключ в приложении:</p>
-                    <p className="text-teal-500 font-bold bg-teal-500/5 p-2 rounded">{getMaskedKey()}</p>
-                    <p className="text-[10px] text-slate-600">Если вы видите "КЛЮЧ ПУСТОЙ" или старый ключ — значит Redeploy в Vercel не сработал или переменная не сохранена.</p>
+                  <div className="bg-black/60 p-6 rounded-2xl border border-white/5 text-left font-mono text-sm space-y-4">
+                    <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                      <span className="text-slate-500 uppercase text-[10px] font-bold">Ключ в системе:</span>
+                      <span className="text-teal-500 font-bold">{getMaskedKey()}</span>
+                    </div>
+                    {rawKey === "PLACEHOLDER_KEY" && (
+                      <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
+                        <p className="text-red-400 text-xs font-bold uppercase mb-2 flex items-center gap-2"><Trash2 className="w-4 h-4" /> Конфликт с GitHub</p>
+                        <p className="text-[11px] text-slate-300 leading-normal">
+                          Брат, у тебя в репозитории на GitHub есть файл <code className="bg-black px-1">.env</code>. 
+                          В нем прописано <code className="bg-black px-1">API_KEY=PLACEHOLDER_KEY</code>. 
+                          Удали этот файл из GitHub, и тогда Vercel возьмет твой правильный ключ из настроек.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
              </div>
 
-             <button onClick={reset} className="px-12 py-5 bg-teal-600 hover:bg-teal-500 text-white rounded-2xl font-black uppercase text-xs shadow-xl w-full">Попробовать снова</button>
+             <button onClick={reset} className="px-12 py-5 bg-white text-black rounded-2xl font-black uppercase text-xs shadow-xl w-full hover:scale-[1.02] transition-transform">Попробовать снова</button>
           </div>
         )}
       </main>
