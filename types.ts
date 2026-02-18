@@ -37,43 +37,10 @@ export interface MetaphorResult {
   moral: string;
 }
 
-// Fix: Add missing AspectRatio enum for image/video generation components
-export enum AspectRatio {
-  SQUARE = '1:1',
-  LANDSCAPE = '16:9',
-  PORTRAIT = '9:16',
-  PHOTO = '4:3',
-}
-
-// Fix: Add missing GenerationMode enum
-export enum GenerationMode {
-  TEXT_TO_IMAGE = 'Text-to-Image',
-  IMAGE_TO_IMAGE = 'Image-to-Image',
-}
-
-// Fix: Add missing ImageModel enum following Gemini API guidelines
-export enum ImageModel {
-  FLASH = 'gemini-2.5-flash-image',
-  PRO = 'gemini-3-pro-image-preview',
-}
-
-// Fix: Add missing ImageFile interface for handling base64 uploads
-export interface ImageFile {
-  file: File;
-  base64: string;
-}
-
-// Fix: Add missing GenerateImageParams interface
-export interface GenerateImageParams {
-  prompt: string;
-  model: ImageModel;
-  aspectRatio: AspectRatio;
-  mode: GenerationMode;
-  numberOfImages: number;
-  inputImage: ImageFile | null;
-}
-
-// Fix: Add missing ImageResultItem interface used in galleries
-export interface ImageResultItem {
-  objectUrl: string;
-}
+// Заглушки для предотвращения ошибок в старых файлах (если они остались в репозитории)
+export enum AspectRatio { SQUARE = '1:1', LANDSCAPE = '16:9', PORTRAIT = '9:16', PHOTO = '4:3' }
+export enum GenerationMode { TEXT_TO_IMAGE = 'T2I', IMAGE_TO_IMAGE = 'I2I' }
+export enum ImageModel { FLASH = 'gemini-2.5-flash-image', PRO = 'gemini-3-pro-image-preview' }
+export interface ImageFile { file: File; base64: string; }
+export interface GenerateImageParams { prompt: string; model: ImageModel; aspectRatio: AspectRatio; mode: GenerationMode; numberOfImages: number; inputImage: ImageFile | null; }
+export interface ImageResultItem { objectUrl: string; }
