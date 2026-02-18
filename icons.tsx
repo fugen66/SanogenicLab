@@ -20,8 +20,6 @@ export const ArrowRightIcon = (props: any) => <ArrowRight strokeWidth={1.5} {...
 export const ArrowPathIcon = (props: any) => <RefreshCw strokeWidth={1.5} {...props} />;
 export const KeyIcon = (props: any) => <KeyRound strokeWidth={1.5} {...props} />;
 export const BrainIcon = (props: any) => <Brain strokeWidth={1.5} {...props} />;
-
-// Fix: Export missing icons for prompt forms and galleries
 export const ChevronDownIcon = (props: any) => <ChevronDown strokeWidth={1.5} {...props} />;
 export const FramesModeIcon = (props: any) => <Images strokeWidth={1.5} {...props} />;
 export const PlusIcon = (props: any) => <Plus strokeWidth={1.5} {...props} />;
