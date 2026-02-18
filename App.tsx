@@ -6,7 +6,8 @@ import {
   AlertCircle,
   ShieldCheck,
   Zap,
-  Globe
+  Globe,
+  Loader2
 } from 'lucide-react';
 import { GoogleGenAI, Type } from '@google/genai';
 
@@ -28,9 +29,9 @@ const LoadingIndicator: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center p-12 animate-in fade-in duration-500">
+    <div className="flex flex-col items-center justify-center p-12 animate-in fade-in duration-500 text-center">
       <div className="w-16 h-16 border-4 border-teal-500/20 border-t-teal-500 rounded-full animate-spin shadow-[0_0_15px_rgba(20,184,166,0.3)]"></div>
-      <p className="mt-8 text-teal-400 font-black uppercase tracking-[0.2em] text-[10px] animate-pulse text-center">
+      <p className="mt-8 text-teal-400 font-black uppercase tracking-[0.2em] text-[10px] animate-pulse">
         {messages[idx]}
       </p>
     </div>
@@ -48,88 +49,100 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [result, setResult] = useState<any>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   const apiKey = process.env.API_KEY;
   const isKeyReady = apiKey && apiKey !== "undefined" && apiKey.length > 10;
 
-  const handleRun = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim()) return;
+  const handleRun = async (e?: React.FormEvent, customInput?: string) => {
+    if (e) e.preventDefault();
+    const finalInput = customInput || input;
+    if (!finalInput.trim()) return;
 
     if (!isKeyReady) {
       setAppState(AppState.ERROR);
-      setError("Критическая ошибка: API_KEY не найден. Проверьте настройки Environment Variables.");
+      setError("API_KEY не найден. Проверьте настройки окружения.");
       return;
     }
 
     setAppState(AppState.LOADING);
     setError(null);
 
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
-      const promptMapping = {
-        [AppTab.ANALYSIS]: `Ты эксперт по саногенному мышлению Орлова. Проведи глубокий разбор мысли: "${input}". Выяви патогенные циклы и дай технику "саногенного щита". Ответ строго в JSON.`,
-        [AppTab.JOURNAL]: `Дай саногенный совет по угашению эмоции или ситуации: "${input}". Ответ строго в JSON.`,
-        [AppTab.METAPHOR]: `Создай терапевтическую притчу для осознания ситуации: "${input}". Ответ строго в JSON.`
-      };
+    const runWithRetry = async (attempt: number = 0): Promise<void> => {
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        
+        const promptMapping = {
+          [AppTab.ANALYSIS]: `Эксперт по саногенному мышлению Орлова. Разбор мысли: "${finalInput}". Выяви патогенные циклы и дай саногенный щит. JSON.`,
+          [AppTab.JOURNAL]: `Саногенный совет для угашения эмоции: "${finalInput}". JSON.`,
+          [AppTab.METAPHOR]: `Короткая терапевтическая притча для осознания ситуации: "${finalInput}". JSON.`
+        };
 
-      const schemaMapping = {
-        [AppTab.ANALYSIS]: {
-          type: Type.OBJECT,
-          properties: {
-            analysis: { type: Type.STRING },
-            shield: { type: Type.STRING },
-            newThought: { type: Type.STRING }
+        const schemaMapping = {
+          [AppTab.ANALYSIS]: {
+            type: Type.OBJECT,
+            properties: {
+              analysis: { type: Type.STRING },
+              shield: { type: Type.STRING },
+              newThought: { type: Type.STRING }
+            },
+            required: ["analysis", "shield", "newThought"]
           },
-          required: ["analysis", "shield", "newThought"]
-        },
-        [AppTab.JOURNAL]: {
-          type: Type.OBJECT,
-          properties: {
-            advice: { type: Type.STRING },
-            reflection: { type: Type.STRING }
+          [AppTab.JOURNAL]: {
+            type: Type.OBJECT,
+            properties: {
+              advice: { type: Type.STRING },
+              reflection: { type: Type.STRING }
+            },
+            required: ["advice", "reflection"]
           },
-          required: ["advice", "reflection"]
-        },
-        [AppTab.METAPHOR]: {
-          type: Type.OBJECT,
-          properties: {
-            story: { type: Type.STRING },
-            title: { type: Type.STRING }
-          },
-          required: ["story", "title"]
+          [AppTab.METAPHOR]: {
+            type: Type.OBJECT,
+            properties: {
+              story: { type: Type.STRING },
+              title: { type: Type.STRING }
+            },
+            required: ["story", "title"]
+          }
+        };
+
+        const response = await ai.models.generateContent({
+          // Используем 2.5-flash как самую стабильную при высоких нагрузках
+          model: 'gemini-2.5-flash',
+          contents: promptMapping[activeTab],
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: schemaMapping[activeTab]
+          }
+        });
+
+        const textOutput = response.text;
+        if (!textOutput) throw new Error("Пустой ответ от модели.");
+        
+        setResult(JSON.parse(textOutput));
+        setAppState(AppState.SUCCESS);
+        setRetryCount(0);
+      } catch (err: any) {
+        console.error(`Attempt ${attempt} failed:`, err);
+        
+        // Логика авто-повтора для 503 и 429 ошибок
+        const isTransientError = err.message?.includes('503') || err.message?.includes('429') || err.message?.includes('UNAVAILABLE');
+        
+        if (isTransientError && attempt < 2) {
+          setRetryCount(attempt + 1);
+          setTimeout(() => runWithRetry(attempt + 1), 2000 * (attempt + 1));
+          return;
         }
-      };
 
-      const response = await ai.models.generateContent({
-        // Используем СТАБИЛЬНУЮ модель gemini-flash-latest вместо Preview
-        model: 'gemini-flash-latest',
-        contents: promptMapping[activeTab],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: schemaMapping[activeTab]
-        }
-      });
-
-      const textOutput = response.text;
-      if (!textOutput) throw new Error("Модель вернула пустой ответ.");
-      
-      setResult(JSON.parse(textOutput));
-      setAppState(AppState.SUCCESS);
-    } catch (err: any) {
-      console.error("Gemini API Error:", err);
-      setAppState(AppState.ERROR);
-      
-      const errorMsg = err.message || "";
-      if (errorMsg.includes('location is not supported')) {
-        setError("Ваш регион временно не поддерживается API Google Gemini. Попробуйте использовать VPN или сменить локацию.");
-      } else if (errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
-        setError("Превышен лимит запросов. Пожалуйста, подождите 1-2 минуты.");
-      } else {
-        setError(errorMsg || "Ошибка соединения с нейросетью.");
+        setAppState(AppState.ERROR);
+        let msg = err.message || "Ошибка соединения.";
+        if (msg.includes('location is not supported')) msg = "Регион не поддерживается. Используйте VPN.";
+        if (isTransientError) msg = "Сервера Google перегружены. Мы попробовали 3 раза, но безуспешно. Попробуйте через минуту.";
+        setError(msg);
       }
-    }
+    };
+
+    runWithRetry();
   };
 
   const reset = () => {
@@ -137,6 +150,7 @@ const App: React.FC = () => {
     setInput('');
     setResult(null);
     setError(null);
+    setRetryCount(0);
   };
 
   return (
@@ -151,7 +165,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-2 mt-1">
                <div className={`w-1.5 h-1.5 rounded-full ${isKeyReady ? 'bg-teal-500 animate-pulse' : 'bg-red-500'}`} />
                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                 {isKeyReady ? 'Flash Stable Module' : 'System Offline'}
+                 {isKeyReady ? 'Engine 2.5 Active' : 'System Offline'}
                </p>
             </div>
           </div>
@@ -186,7 +200,7 @@ const App: React.FC = () => {
               <textarea 
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={activeTab === AppTab.ANALYSIS ? "Какая мысль причиняет вам боль?" : "Опишите ситуацию или чувство..."}
+                placeholder={activeTab === AppTab.ANALYSIS ? "Какая мысль причиняет вам боль?" : "Опишите ситуацию..."}
                 className="w-full bg-slate-950/50 border border-slate-800 rounded-[2rem] p-8 text-xl text-white outline-none focus:ring-2 focus:ring-teal-500/50 min-h-[180px] transition-all placeholder:text-slate-700"
               />
               <button 
@@ -199,7 +213,17 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {appState === AppState.LOADING && <LoadingIndicator />}
+        {appState === AppState.LOADING && (
+          <div className="space-y-4">
+            <LoadingIndicator />
+            {retryCount > 0 && (
+              <div className="flex items-center justify-center gap-2 text-teal-500/50 text-[10px] font-black uppercase tracking-widest animate-pulse">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Сервер перегружен, пробуем еще раз (Попытка {retryCount}/2)
+              </div>
+            )}
+          </div>
+        )}
 
         {appState === AppState.SUCCESS && result && (
           <div className="space-y-8 animate-in zoom-in-95 duration-500">
@@ -233,8 +257,8 @@ const App: React.FC = () => {
                </div>
              ) : (
                <div className="bg-slate-900/60 p-12 rounded-[3.5rem] border border-white/5 shadow-2xl max-w-3xl mx-auto text-center">
-                 {result.title && <h3 className="text-teal-500 font-black uppercase tracking-widest mb-6">{result.title}</h3>}
-                 <p className="text-2xl text-slate-200 font-serif leading-relaxed italic whitespace-pre-line">
+                 {result.title && <h3 className="text-teal-500 font-black uppercase tracking-widest mb-6 underline decoration-teal-500/30 underline-offset-8 italic">{result.title}</h3>}
+                 <p className="text-2xl text-slate-200 font-serif leading-relaxed italic whitespace-pre-line text-left md:text-center">
                    {result.advice || result.story || result.reflection || "Нет данных."}
                  </p>
                </div>
@@ -249,7 +273,7 @@ const App: React.FC = () => {
                 <h3 className="text-white font-black uppercase tracking-widest">Проблема доступа</h3>
                 <p className="text-red-400 text-sm font-medium leading-relaxed max-w-md mx-auto">{error}</p>
              </div>
-             <button onClick={reset} className="px-12 py-5 bg-white text-black rounded-2xl font-black uppercase text-xs shadow-xl hover:scale-105 transition-transform">Вернуться назад</button>
+             <button onClick={reset} className="px-12 py-5 bg-white text-black rounded-2xl font-black uppercase text-xs shadow-xl hover:scale-105 transition-transform">Попробовать еще раз</button>
           </div>
         )}
       </main>
