@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { GoogleGenAI, Type } from '@google/genai';
 
-// --- ВНУТРЕННИЕ КОМПОНЕНТЫ (Чтобы билд не искал их в других папках) ---
+// --- ВНУТРЕННИЕ КОМПОНЕНТЫ ---
 
 const LoadingIndicator: React.FC = () => {
   const messages = [
@@ -48,7 +48,6 @@ const App: React.FC = () => {
   const [input, setInput] = useState('');
   const [result, setResult] = useState<any>(null);
 
-  // Проверка ключа. В Vite он будет доступен через process.env.API_KEY благодаря vite.config.ts
   const apiKey = process.env.API_KEY;
   const isKeyReady = apiKey && apiKey !== "undefined" && apiKey.length > 10;
 
@@ -66,7 +65,6 @@ const App: React.FC = () => {
     setError(null);
 
     try {
-      // Инициализация строго перед вызовом
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       const promptMapping = {
@@ -104,7 +102,8 @@ const App: React.FC = () => {
       };
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        // Переходим на Flash для стабильности и лимитов
+        model: 'gemini-3-flash-preview',
         contents: promptMapping[activeTab],
         config: {
           responseMimeType: "application/json",
@@ -120,7 +119,13 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error("Gemini API Error:", err);
       setAppState(AppState.ERROR);
-      setError(err.message || "Ошибка соединения с нейросетью. Проверьте лимиты API.");
+      
+      // Понятное описание ошибки квот для пользователя
+      if (err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED')) {
+        setError("Превышен лимит запросов нейросети. Пожалуйста, подождите 1-2 минуты и попробуйте снова.");
+      } else {
+        setError(err.message || "Ошибка соединения с нейросетью. Проверьте лимиты API.");
+      }
     }
   };
 
@@ -133,7 +138,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 selection:bg-teal-500/30 font-sans tracking-tight">
-      {/* HEADER */}
       <header className="py-8 px-8 max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6 border-b border-white/5 backdrop-blur-sm sticky top-0 z-50">
         <div className="flex items-center gap-4 cursor-pointer group" onClick={reset}>
           <div className="w-12 h-12 bg-gradient-to-br from-teal-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-xl group-hover:scale-105 transition-transform duration-300">
@@ -144,7 +148,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-2 mt-1">
                <div className={`w-1.5 h-1.5 rounded-full ${isKeyReady ? 'bg-teal-500 animate-pulse' : 'bg-red-500'}`} />
                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                 {isKeyReady ? 'AI Module Active' : 'System Offline'}
+                 {isKeyReady ? 'Flash Module Active' : 'System Offline'}
                </p>
             </div>
           </div>
@@ -163,7 +167,6 @@ const App: React.FC = () => {
         </nav>
       </header>
 
-      {/* MAIN CONTENT */}
       <main className="max-w-4xl mx-auto px-6 py-16">
         {appState === AppState.IDLE && (
           <div className="space-y-12 animate-in fade-in slide-in-from-bottom-8 duration-700">
