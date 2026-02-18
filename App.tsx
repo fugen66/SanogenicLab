@@ -5,7 +5,8 @@ import {
   Brain,
   AlertCircle,
   ShieldCheck,
-  Zap
+  Zap,
+  Globe
 } from 'lucide-react';
 import { GoogleGenAI, Type } from '@google/genai';
 
@@ -29,7 +30,7 @@ const LoadingIndicator: React.FC = () => {
   return (
     <div className="flex flex-col items-center justify-center p-12 animate-in fade-in duration-500">
       <div className="w-16 h-16 border-4 border-teal-500/20 border-t-teal-500 rounded-full animate-spin shadow-[0_0_15px_rgba(20,184,166,0.3)]"></div>
-      <p className="mt-8 text-teal-400 font-black uppercase tracking-[0.2em] text-[10px] animate-pulse">
+      <p className="mt-8 text-teal-400 font-black uppercase tracking-[0.2em] text-[10px] animate-pulse text-center">
         {messages[idx]}
       </p>
     </div>
@@ -57,7 +58,7 @@ const App: React.FC = () => {
 
     if (!isKeyReady) {
       setAppState(AppState.ERROR);
-      setError("Критическая ошибка: API_KEY не найден. Проверьте настройки Environment Variables в Vercel.");
+      setError("Критическая ошибка: API_KEY не найден. Проверьте настройки Environment Variables.");
       return;
     }
 
@@ -102,8 +103,8 @@ const App: React.FC = () => {
       };
 
       const response = await ai.models.generateContent({
-        // Переходим на Flash для стабильности и лимитов
-        model: 'gemini-3-flash-preview',
+        // Используем СТАБИЛЬНУЮ модель gemini-flash-latest вместо Preview
+        model: 'gemini-flash-latest',
         contents: promptMapping[activeTab],
         config: {
           responseMimeType: "application/json",
@@ -112,7 +113,7 @@ const App: React.FC = () => {
       });
 
       const textOutput = response.text;
-      if (!textOutput) throw new Error("Модель вернула пустой ответ. Попробуйте еще раз.");
+      if (!textOutput) throw new Error("Модель вернула пустой ответ.");
       
       setResult(JSON.parse(textOutput));
       setAppState(AppState.SUCCESS);
@@ -120,11 +121,13 @@ const App: React.FC = () => {
       console.error("Gemini API Error:", err);
       setAppState(AppState.ERROR);
       
-      // Понятное описание ошибки квот для пользователя
-      if (err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED')) {
-        setError("Превышен лимит запросов нейросети. Пожалуйста, подождите 1-2 минуты и попробуйте снова.");
+      const errorMsg = err.message || "";
+      if (errorMsg.includes('location is not supported')) {
+        setError("Ваш регион временно не поддерживается API Google Gemini. Попробуйте использовать VPN или сменить локацию.");
+      } else if (errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
+        setError("Превышен лимит запросов. Пожалуйста, подождите 1-2 минуты.");
       } else {
-        setError(err.message || "Ошибка соединения с нейросетью. Проверьте лимиты API.");
+        setError(errorMsg || "Ошибка соединения с нейросетью.");
       }
     }
   };
@@ -148,7 +151,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-2 mt-1">
                <div className={`w-1.5 h-1.5 rounded-full ${isKeyReady ? 'bg-teal-500 animate-pulse' : 'bg-red-500'}`} />
                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                 {isKeyReady ? 'Flash Module Active' : 'System Offline'}
+                 {isKeyReady ? 'Flash Stable Module' : 'System Offline'}
                </p>
             </div>
           </div>
@@ -183,14 +186,14 @@ const App: React.FC = () => {
               <textarea 
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={activeTab === AppTab.ANALYSIS ? "Какая мысль причиняет вам боль?" : "Что вы сейчас чувствуете?"}
+                placeholder={activeTab === AppTab.ANALYSIS ? "Какая мысль причиняет вам боль?" : "Опишите ситуацию или чувство..."}
                 className="w-full bg-slate-950/50 border border-slate-800 rounded-[2rem] p-8 text-xl text-white outline-none focus:ring-2 focus:ring-teal-500/50 min-h-[180px] transition-all placeholder:text-slate-700"
               />
               <button 
                 type="submit" 
                 className="w-full py-8 bg-white text-slate-950 font-black rounded-[2.5rem] hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center gap-4 uppercase tracking-[0.2em] text-sm shadow-2xl group"
               >
-                Запустить разбор <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
+                Создать {activeTab === AppTab.METAPHOR ? 'притчу' : 'разбор'} <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
               </button>
             </form>
           </div>
@@ -232,7 +235,7 @@ const App: React.FC = () => {
                <div className="bg-slate-900/60 p-12 rounded-[3.5rem] border border-white/5 shadow-2xl max-w-3xl mx-auto text-center">
                  {result.title && <h3 className="text-teal-500 font-black uppercase tracking-widest mb-6">{result.title}</h3>}
                  <p className="text-2xl text-slate-200 font-serif leading-relaxed italic whitespace-pre-line">
-                   {result.advice || result.story || result.reflection || "Нет данных для отображения."}
+                   {result.advice || result.story || result.reflection || "Нет данных."}
                  </p>
                </div>
              )}
@@ -241,12 +244,12 @@ const App: React.FC = () => {
 
         {appState === AppState.ERROR && (
           <div className="bg-red-500/10 border border-red-500/20 p-12 rounded-[3rem] text-center space-y-6 animate-in shake duration-500">
-             <AlertCircle className="w-16 h-16 text-red-500 mx-auto opacity-50" />
+             {error?.includes('регион') ? <Globe className="w-16 h-16 text-red-500 mx-auto opacity-50" /> : <AlertCircle className="w-16 h-16 text-red-500 mx-auto opacity-50" />}
              <div className="space-y-2">
-                <h3 className="text-white font-black uppercase tracking-widest">Системная ошибка</h3>
+                <h3 className="text-white font-black uppercase tracking-widest">Проблема доступа</h3>
                 <p className="text-red-400 text-sm font-medium leading-relaxed max-w-md mx-auto">{error}</p>
              </div>
-             <button onClick={reset} className="px-12 py-5 bg-white text-black rounded-2xl font-black uppercase text-xs shadow-xl hover:scale-105 transition-transform">Попробовать снова</button>
+             <button onClick={reset} className="px-12 py-5 bg-white text-black rounded-2xl font-black uppercase text-xs shadow-xl hover:scale-105 transition-transform">Вернуться назад</button>
           </div>
         )}
       </main>
